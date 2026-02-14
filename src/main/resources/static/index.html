@@ -1,0 +1,729 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="FilesCloud">
+    <meta name="theme-color" content="#4f46e5">
+    <meta name="mobile-web-app-capable" content="yes">
+    <link rel="manifest" href="manifest.json">
+    <title>Cloud File Server</title>
+
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+    <style>
+        :root {
+            --primary: #4f46e5;
+            --surface: #ffffff;
+            --bg: #f1f5f9;
+            --text: #0f172a;
+            --text-light: #64748b;
+            --danger: #ef4444;
+            --success: #10b981;
+            --warning: #f59e0b;
+        }
+
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            margin: 0;
+            padding-bottom: 100px;
+            padding-top: max(env(safe-area-inset-top), 20px);
+        }
+
+        header {
+            background: var(--surface); padding: 16px 20px;
+            position: sticky; top: 0; z-index: 50;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        h1 { margin: 0; font-size: 1.25rem; font-weight: 700; color: var(--text); display: flex; align-items: center; }
+        .header-actions { display: flex; gap: 8px; }
+        .header-btn {
+            background: #f1f5f9; border: none; font-size: 1.1rem; color: var(--primary);
+            border-radius: 50%; width: 42px; height: 42px; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+        }
+
+        .container { padding: 20px; max-width: 1200px; margin: 0 auto; }
+        .file-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(155px, 1fr)); gap: 16px; }
+
+        .card {
+            background: var(--surface); border-radius: 16px; padding: 16px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            display: flex; flex-direction: column; align-items: center; text-align: center;
+        }
+        .file-icon { font-size: 2.8rem; color: var(--primary); margin: 12px 0 16px 0; }
+        .file-name { font-size: 0.95rem; font-weight: 600; width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 4px; }
+        .file-meta { font-size: 0.75rem; color: var(--text-light); margin-bottom: 16px; }
+
+        .actions { display: flex; gap: 6px; width: 100%; justify-content: space-evenly; border-top: 1px solid #f1f5f9; padding-top: 12px; }
+        .btn-icon { background: transparent; color: var(--text-light); border: none; width: 36px; height: 36px; border-radius:10px; cursor: pointer; font-size: 1.1rem; display:flex; align-items:center; justify-content:center;}
+        .btn-icon:hover { background: #f1f5f9; color: var(--primary); }
+        .btn-icon.delete:hover { background: #fef2f2; color: var(--danger); }
+
+        .fab {
+            position: fixed; bottom: 30px; right: 30px;
+            width: 64px; height: 64px; border-radius: 50%;
+            background: linear-gradient(135deg, var(--primary), #4338ca);
+            color: white; border: none; box-shadow: 0 10px 25px -5px rgba(79, 70, 229, 0.5);
+            font-size: 1.75rem; display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 100;
+        }
+
+        .modal-overlay {
+            display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); backdrop-filter: blur(4px);
+            z-index: 200; justify-content: center; align-items: center;
+        }
+        .modal-overlay.active { display: flex; }
+        .modal-content {
+            background: var(--surface); padding: 24px; border-radius: 24px; text-align: center;
+            width: 90%; max-width: 340px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1);
+        }
+
+        .stat-box { background: #f8fafc; padding: 12px; border-radius: 12px; border: 1px solid #e2e8f0; margin-bottom: 12px; text-align: left; }
+        .stat-label { font-size: 0.75rem; color: var(--text-light); text-transform: uppercase; margin-bottom: 4px; }
+        .stat-value { font-size: 1.2rem; font-weight: 700; color: var(--text); }
+        .progress-bg { width: 100%; height: 6px; background: #e2e8f0; border-radius: 3px; margin-top: 8px; overflow: hidden; }
+        .progress-fill { height: 100%; background: var(--primary); width: 0%; transition: width 0.5s ease; }
+        .fill-danger { background: var(--danger); }
+        .fill-warning { background: var(--warning); }
+        .fill-success { background: var(--success); }
+
+        #toast {
+            visibility: hidden; background-color: #0f172a; color: #fff;
+            text-align: center; border-radius: 50px; padding: 12px 24px;
+            position: fixed; z-index: 300; left: 50%; bottom: 40px; transform: translateX(-50%);
+        }
+        #toast.show { visibility: visible; }
+    </style>
+</head>
+<body>
+
+<header>
+    <h1><i class="fas fa-cloud" style="margin-right:10px; color:var(--primary);"></i>Cloud File Server</h1>
+    <div class="header-actions">
+        <button class="header-btn" onclick="openAdminAuth()" title="Server Status"><i class="fas fa-server"></i></button>
+        <button class="header-btn" onclick="shareApp()" title="Share App"><i class="fas fa-qrcode"></i></button>
+        <button class="header-btn" onclick="loadFiles()" title="Refresh"><i class="fas fa-sync-alt"></i></button>
+    </div>
+</header>
+
+<div class="container">
+    <div id="file-grid" class="file-grid"></div>
+</div>
+
+<input type="file" id="fileInput" style="display: none;" onchange="handleFileSelect()">
+<button class="fab" onclick="document.getElementById('fileInput').click()"><i class="fas fa-plus"></i></button>
+
+<div id="adminAuthModal" class="modal-overlay" onclick="closeModal(event)">
+    <div class="modal-content">
+        <h3>Admin Access</h3>
+        <p style="color:#64748b;">Enter password</p>
+        <input type="password" id="adminPass" placeholder="Password" style="width:100%; padding:12px; border-radius:12px; border:1px solid #ddd; margin-bottom:15px; text-align:center;">
+        <button onclick="checkAdmin()" style="width:100%; padding:12px; background:var(--primary); color:white; border:none; border-radius:12px;">Login</button>
+    </div>
+</div>
+
+<div id="adminDashModal" class="modal-overlay">
+    <div class="modal-content" style="max-width: 400px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+            <h3 style="margin:0;"><i class="fas fa-heartbeat" style="color:var(--danger)"></i> System Health</h3>
+            <button onclick="closeAdminDash()" style="background:none; border:none; font-size:1.5rem; cursor:pointer;">&times;</button>
+        </div>
+
+        <div class="stat-box">
+            <div class="stat-label">System CPU Load</div>
+            <div class="stat-value" id="cpuVal">0%</div>
+            <div class="progress-bg"><div id="cpuBar" class="progress-fill"></div></div>
+        </div>
+
+        <div class="stat-box">
+            <div style="display:flex; justify-content:space-between;">
+                <div class="stat-label">System RAM</div>
+                <div class="stat-label" id="memText">0 / 0 GB</div>
+            </div>
+            <div class="progress-bg"><div id="memBar" class="progress-fill"></div></div>
+        </div>
+
+        <div class="stat-box">
+            <div style="display:flex; justify-content:space-between;">
+                <div class="stat-label">Disk Storage</div>
+                <div class="stat-label" id="diskText">0 / 0 GB</div>
+            </div>
+            <div class="progress-bg"><div id="diskBar" class="progress-fill"></div></div>
+        </div>
+
+        <div style="margin-top:10px; color:#64748b; font-size:0.8rem;">Uptime: <span id="uptimeVal">0</span> mins</div>
+    </div>
+</div>
+
+<div id="qrModal" class="modal-overlay" onclick="closeModal(event)">
+    <div class="modal-content">
+        <h3 id="qrTitle">Scan QR</h3>
+        <div id="qrBox" style="display:flex; justify-content:center; margin: 20px 0;"></div>
+        <p id="qrLinkText" style="font-size:11px; word-break:break-all; background:#f1f5f9; padding:10px; border-radius:8px;"></p>
+        <button onclick="document.getElementById('qrModal').classList.remove('active')" style="width:100%; padding:12px; background:var(--primary); color:white; border:none; border-radius:12px;">Done</button>
+    </div>
+</div>
+
+<div id="progressModal" class="modal-overlay">
+    <div class="modal-content">
+        <h3>Uploading...</h3>
+        <progress id="progressBar" value="0" max="100" style="width:100%; height:10px;"></progress>
+    </div>
+</div>
+
+<div id="toast">Notification</div>
+
+<script>
+    /* CONFIGURATION
+       The application assumes it is hosted at this context path.
+    */
+    const BASE_PATH = "/rest/cloudfileserver/";
+
+    /* ICONS & HELPERS */
+    const getIcon = (f) => {
+        const ext = f.split('.').pop().toLowerCase();
+        const map = {'pdf':'fa-file-pdf','jpg':'fa-file-image','png':'fa-file-image','mp4':'fa-file-video','zip':'fa-file-archive'};
+        return map[ext] || 'fa-file';
+    };
+
+    function formatSize(bytes) {
+        if(bytes===0) return '0 B';
+        const k=1024, i=Math.floor(Math.log(bytes)/Math.log(k));
+        return parseFloat((bytes/Math.pow(k,i)).toFixed(1))+' '+['B','KB','MB','GB'][i];
+    }
+
+    /* ADMIN LOGIC */
+    let adminAuthHeader = null;
+    let refreshTimer = null;
+
+    function openAdminAuth() {
+        if (adminAuthHeader) openAdminDash();
+        else {
+            document.getElementById('adminAuthModal').classList.add('active');
+            document.getElementById('adminPass').value = '';
+            document.getElementById('adminPass').focus();
+        }
+    }
+
+    async function checkAdmin() {
+        const pass = document.getElementById('adminPass').value;
+        const creds = btoa("admin:" + pass);
+        const header = "Basic " + creds;
+
+        try {
+            // Updated to use BASE_PATH
+            const res = await fetch(BASE_PATH + 'admin/health', { headers: { 'Authorization': header } });
+            if (res.ok) {
+                adminAuthHeader = header;
+                document.getElementById('adminAuthModal').classList.remove('active');
+                openAdminDash(await res.json());
+            } else { alert("Wrong password"); }
+        } catch (e) { alert("Server error"); }
+    }
+
+    async function openAdminDash(preloadedData) {
+        document.getElementById('adminDashModal').classList.add('active');
+        if (preloadedData) updateDashUI(preloadedData);
+        else fetchAndShowStats();
+        if (refreshTimer) clearInterval(refreshTimer);
+        refreshTimer = setInterval(fetchAndShowStats, 2000);
+    }
+
+    function closeAdminDash() {
+        if (refreshTimer) clearInterval(refreshTimer);
+        refreshTimer = null;
+        document.getElementById('adminDashModal').classList.remove('active');
+    }
+
+    async function fetchAndShowStats() {
+        try {
+            // Updated to use BASE_PATH
+            const res = await fetch(BASE_PATH + 'admin/health', { headers: { 'Authorization': adminAuthHeader } });
+            if(res.ok) updateDashUI(await res.json());
+            else if(res.status === 401) {
+                closeAdminDash();
+                adminAuthHeader = null;
+            }
+        } catch(e) { console.error("Stats failed", e); }
+    }
+
+    function updateDashUI(data) {
+        if(!data) return;
+        const cpu = data.cpu.load;
+        document.getElementById('cpuVal').innerText = cpu + "%";
+        setBar('cpuBar', cpu);
+
+        const ram = data.systemMemory;
+        document.getElementById('memText').innerText = `${ram.usedGB} / ${ram.totalGB} GB`;
+        setBar('memBar', ram.percent);
+
+        const disk = data.disk;
+        document.getElementById('diskText').innerText = `${disk.usedGB} / ${disk.totalGB} GB`;
+        setBar('diskBar', disk.percent);
+
+        document.getElementById('uptimeVal').innerText = data.uptimeMinutes;
+    }
+
+    function setBar(id, pct) {
+        const bar = document.getElementById(id);
+        bar.style.width = pct + "%";
+        bar.className = 'progress-fill ' + (pct < 60 ? 'fill-success' : pct < 85 ? 'fill-warning' : 'fill-danger');
+    }
+
+    /* MAIN FILE LOGIC */
+    async function loadFiles() {
+        const grid = document.getElementById('file-grid');
+        grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:40px;color:#888"><i class="fas fa-spinner fa-spin fa-2x"></i></div>';
+
+        try {
+            // Updated to use BASE_PATH
+            const res = await fetch(BASE_PATH + "files");
+            const files = await res.json();
+            grid.innerHTML = '';
+
+            if(!files.length) { grid.innerHTML='<div style="grid-column:1/-1;text-align:center;padding:40px;color:#ccc"><i class="fas fa-folder-open fa-3x"></i><p>No files</p></div>'; return; }
+
+            files.forEach(f => {
+                // Constructed URL including BASE_PATH
+                const url = `${window.location.protocol}//${window.location.host}${BASE_PATH}f/${f.fileKey}`;
+                const card = document.createElement('div');
+                card.className = 'card';
+                card.innerHTML = `
+                    <i class="fas ${getIcon(f.originalFileName)} file-icon"></i>
+                    <div class="file-name">${f.originalFileName}</div>
+                    <div class="file-meta">${formatSize(f.size)}</div>
+                    <div class="actions">
+                        <button class="btn-icon" onclick="window.location.href='${url}'"><i class="fas fa-cloud-download-alt"></i></button>
+                        <button class="btn-icon" onclick="shareLink('${url}')"><i class="fas fa-link"></i></button>
+                        <button class="btn-icon" onclick="showQR('${url}', 'Scan to Download')" title="QR"><i class="fas fa-qrcode"></i></button>
+                        <button class="btn-icon delete" onclick="removeFile('${f.fileKey}')"><i class="fas fa-trash"></i></button>
+                    </div>`;
+                grid.appendChild(card);
+            });
+        } catch(e) { grid.innerHTML = 'Failed to load files'; }
+    }
+
+    /* UPLOAD & SHARE */
+    function handleFileSelect() {
+        const file = document.getElementById('fileInput').files[0];
+        if(!file) return;
+        const xhr = new XMLHttpRequest();
+        const fd = new FormData();
+        fd.append("file", file);
+
+        // Updated to use BASE_PATH
+        xhr.open("POST", BASE_PATH + "upload", true);
+
+        document.getElementById('progressModal').classList.add('active');
+
+        xhr.upload.onprogress = (e) => {
+            if(e.lengthComputable) document.getElementById('progressBar').value = (e.loaded/e.total)*100;
+        };
+        xhr.onload = () => {
+            setTimeout(() => {
+                document.getElementById('progressModal').classList.remove('active');
+                loadFiles();
+            }, 500);
+        };
+        xhr.send(fd);
+    }
+
+    function shareLink(url) {
+        navigator.clipboard.writeText(url).then(() => showToast("Copied!"));
+    }
+
+    function showQR(url, title) {
+        document.getElementById('qrTitle').innerText = title || "Scan QR";
+        document.getElementById('qrBox').innerHTML = "";
+        document.getElementById('qrLinkText').innerText = url;
+        new QRCode(document.getElementById('qrBox'), {text:url, width:200, height:200});
+        document.getElementById('qrModal').classList.add('active');
+    }
+
+    function shareApp() { showQR(window.location.href, "Scan to Open App"); }
+
+    async function removeFile(key) {
+        if(confirm("Delete?")) {
+            // Updated to use BASE_PATH
+            await fetch(`${BASE_PATH}files/${key}`, {method:'DELETE'});
+            loadFiles();
+        }
+    }
+
+    function closeModal(e) { if(e.target.classList.contains('modal-overlay')) e.target.classList.remove('active'); }
+    function showToast(msg) {
+        const t=document.getElementById('toast'); t.innerText=msg; t.classList.add('show');
+        setTimeout(()=>t.classList.remove('show'), 2000);
+    }
+
+    loadFiles();
+</script>
+</body>
+</html>
+
+<!--<!DOCTYPE html>-->
+<!--<html lang="en">-->
+<!--<head>-->
+<!--    <meta charset="UTF-8">-->
+<!--    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">-->
+<!--    <meta name="apple-mobile-web-app-capable" content="yes">-->
+<!--    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">-->
+<!--    <meta name="theme-color" content="#4f46e5">-->
+<!--    <title>Cloud File Server</title>-->
+
+<!--    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">-->
+<!--    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">-->
+<!--    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>-->
+
+<!--    <style>-->
+<!--        :root {-->
+<!--            &#45;&#45;primary: #4f46e5;-->
+<!--            &#45;&#45;surface: #ffffff;-->
+<!--            &#45;&#45;bg: #f1f5f9;-->
+<!--            &#45;&#45;text: #0f172a;-->
+<!--            &#45;&#45;text-light: #64748b;-->
+<!--            &#45;&#45;danger: #ef4444;-->
+<!--            &#45;&#45;success: #10b981;-->
+<!--            &#45;&#45;warning: #f59e0b;-->
+<!--        }-->
+
+<!--        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }-->
+
+<!--        body {-->
+<!--            font-family: 'Inter', sans-serif;-->
+<!--            background: var(&#45;&#45;bg);-->
+<!--            color: var(&#45;&#45;text);-->
+<!--            margin: 0;-->
+<!--            padding-bottom: 100px;-->
+<!--            padding-top: env(safe-area-inset-top);-->
+<!--        }-->
+
+<!--        header {-->
+<!--            background: var(&#45;&#45;surface); padding: 16px 20px;-->
+<!--            position: sticky; top: 0; z-index: 50;-->
+<!--            box-shadow: 0 1px 2px rgba(0,0,0,0.05);-->
+<!--            display: flex; justify-content: space-between; align-items: center;-->
+<!--        }-->
+<!--        h1 { margin: 0; font-size: 1.25rem; font-weight: 700; color: var(&#45;&#45;text); display: flex; align-items: center; }-->
+<!--        .header-actions { display: flex; gap: 8px; }-->
+<!--        .header-btn {-->
+<!--            background: #f1f5f9; border: none; font-size: 1.1rem; color: var(&#45;&#45;primary);-->
+<!--            border-radius: 50%; width: 42px; height: 42px; cursor: pointer;-->
+<!--            display: flex; align-items: center; justify-content: center;-->
+<!--        }-->
+
+<!--        .container { padding: 20px; max-width: 1200px; margin: 0 auto; }-->
+<!--        .file-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(155px, 1fr)); gap: 16px; }-->
+
+<!--        .card {-->
+<!--            background: var(&#45;&#45;surface); border-radius: 16px; padding: 16px;-->
+<!--            box-shadow: 0 2px 4px rgba(0,0,0,0.05);-->
+<!--            display: flex; flex-direction: column; align-items: center; text-align: center;-->
+<!--        }-->
+<!--        .file-icon { font-size: 2.8rem; color: var(&#45;&#45;primary); margin: 12px 0 16px 0; }-->
+<!--        .file-name { font-size: 0.95rem; font-weight: 600; width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 4px; }-->
+<!--        .file-meta { font-size: 0.75rem; color: var(&#45;&#45;text-light); margin-bottom: 16px; }-->
+
+<!--        .actions { display: flex; gap: 6px; width: 100%; justify-content: space-evenly; border-top: 1px solid #f1f5f9; padding-top: 12px; }-->
+<!--        .btn-icon { background: transparent; color: var(&#45;&#45;text-light); border: none; width: 36px; height: 36px; border-radius:10px; cursor: pointer; font-size: 1.1rem; display:flex; align-items:center; justify-content:center;}-->
+<!--        .btn-icon:hover { background: #f1f5f9; color: var(&#45;&#45;primary); }-->
+<!--        .btn-icon.delete:hover { background: #fef2f2; color: var(&#45;&#45;danger); }-->
+
+<!--        .fab {-->
+<!--            position: fixed; bottom: 30px; right: 30px;-->
+<!--            width: 64px; height: 64px; border-radius: 50%;-->
+<!--            background: linear-gradient(135deg, var(&#45;&#45;primary), #4338ca);-->
+<!--            color: white; border: none; box-shadow: 0 10px 25px -5px rgba(79, 70, 229, 0.5);-->
+<!--            font-size: 1.75rem; display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 100;-->
+<!--        }-->
+
+<!--        .modal-overlay {-->
+<!--            display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); backdrop-filter: blur(4px);-->
+<!--            z-index: 200; justify-content: center; align-items: center;-->
+<!--        }-->
+<!--        .modal-overlay.active { display: flex; }-->
+<!--        .modal-content {-->
+<!--            background: var(&#45;&#45;surface); padding: 24px; border-radius: 24px; text-align: center;-->
+<!--            width: 90%; max-width: 340px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1);-->
+<!--        }-->
+
+<!--        .stat-box { background: #f8fafc; padding: 12px; border-radius: 12px; border: 1px solid #e2e8f0; margin-bottom: 12px; text-align: left; }-->
+<!--        .stat-label { font-size: 0.75rem; color: var(&#45;&#45;text-light); text-transform: uppercase; margin-bottom: 4px; }-->
+<!--        .stat-value { font-size: 1.2rem; font-weight: 700; color: var(&#45;&#45;text); }-->
+<!--        .progress-bg { width: 100%; height: 6px; background: #e2e8f0; border-radius: 3px; margin-top: 8px; overflow: hidden; }-->
+<!--        .progress-fill { height: 100%; background: var(&#45;&#45;primary); width: 0%; transition: width 0.5s ease; }-->
+<!--        .fill-danger { background: var(&#45;&#45;danger); }-->
+<!--        .fill-warning { background: var(&#45;&#45;warning); }-->
+<!--        .fill-success { background: var(&#45;&#45;success); }-->
+
+<!--        #toast {-->
+<!--            visibility: hidden; background-color: #0f172a; color: #fff;-->
+<!--            text-align: center; border-radius: 50px; padding: 12px 24px;-->
+<!--            position: fixed; z-index: 300; left: 50%; bottom: 40px; transform: translateX(-50%);-->
+<!--        }-->
+<!--        #toast.show { visibility: visible; }-->
+<!--    </style>-->
+<!--</head>-->
+<!--<body>-->
+
+<!--<header>-->
+<!--    <h1><i class="fas fa-cloud" style="margin-right:10px; color:var(&#45;&#45;primary);"></i>Cloud File Server</h1>-->
+<!--    <div class="header-actions">-->
+<!--        <button class="header-btn" onclick="openAdminAuth()" title="Server Status"><i class="fas fa-server"></i></button>-->
+<!--        <button class="header-btn" onclick="shareApp()" title="Share App"><i class="fas fa-qrcode"></i></button>-->
+<!--        <button class="header-btn" onclick="loadFiles()" title="Refresh"><i class="fas fa-sync-alt"></i></button>-->
+<!--    </div>-->
+<!--</header>-->
+
+<!--<div class="container">-->
+<!--    <div id="file-grid" class="file-grid"></div>-->
+<!--</div>-->
+
+<!--<input type="file" id="fileInput" style="display: none;" onchange="handleFileSelect()">-->
+<!--<button class="fab" onclick="document.getElementById('fileInput').click()"><i class="fas fa-plus"></i></button>-->
+
+<!--<div id="adminAuthModal" class="modal-overlay" onclick="closeModal(event)">-->
+<!--    <div class="modal-content">-->
+<!--        <h3>Admin Access</h3>-->
+<!--        <p style="color:#64748b;">Enter password</p>-->
+<!--        <input type="password" id="adminPass" placeholder="Password" style="width:100%; padding:12px; border-radius:12px; border:1px solid #ddd; margin-bottom:15px; text-align:center;">-->
+<!--        <button onclick="checkAdmin()" style="width:100%; padding:12px; background:var(&#45;&#45;primary); color:white; border:none; border-radius:12px;">Login</button>-->
+<!--    </div>-->
+<!--</div>-->
+
+<!--<div id="adminDashModal" class="modal-overlay">-->
+<!--    <div class="modal-content" style="max-width: 400px;">-->
+<!--        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">-->
+<!--            <h3 style="margin:0;"><i class="fas fa-heartbeat" style="color:var(&#45;&#45;danger)"></i> System Health</h3>-->
+<!--            <button onclick="closeAdminDash()" style="background:none; border:none; font-size:1.5rem; cursor:pointer;">&times;</button>-->
+<!--        </div>-->
+
+<!--        <div class="stat-box">-->
+<!--            <div class="stat-label">System CPU Load</div>-->
+<!--            <div class="stat-value" id="cpuVal">0%</div>-->
+<!--            <div class="progress-bg"><div id="cpuBar" class="progress-fill"></div></div>-->
+<!--        </div>-->
+
+<!--        <div class="stat-box">-->
+<!--            <div style="display:flex; justify-content:space-between;">-->
+<!--                <div class="stat-label">System RAM</div>-->
+<!--                <div class="stat-label" id="memText">0 / 0 GB</div>-->
+<!--            </div>-->
+<!--            <div class="progress-bg"><div id="memBar" class="progress-fill"></div></div>-->
+<!--        </div>-->
+
+<!--        <div class="stat-box">-->
+<!--            <div style="display:flex; justify-content:space-between;">-->
+<!--                <div class="stat-label">Disk Storage</div>-->
+<!--                <div class="stat-label" id="diskText">0 / 0 GB</div>-->
+<!--            </div>-->
+<!--            <div class="progress-bg"><div id="diskBar" class="progress-fill"></div></div>-->
+<!--        </div>-->
+
+<!--        <div style="margin-top:10px; color:#64748b; font-size:0.8rem;">Uptime: <span id="uptimeVal">0</span> mins</div>-->
+<!--    </div>-->
+<!--</div>-->
+
+<!--<div id="qrModal" class="modal-overlay" onclick="closeModal(event)">-->
+<!--    <div class="modal-content">-->
+<!--        <h3 id="qrTitle">Scan QR</h3>-->
+<!--        <div id="qrBox" style="display:flex; justify-content:center; margin: 20px 0;"></div>-->
+<!--        <p id="qrLinkText" style="font-size:11px; word-break:break-all; background:#f1f5f9; padding:10px; border-radius:8px;"></p>-->
+<!--        <button onclick="document.getElementById('qrModal').classList.remove('active')" style="width:100%; padding:12px; background:var(&#45;&#45;primary); color:white; border:none; border-radius:12px;">Done</button>-->
+<!--    </div>-->
+<!--</div>-->
+
+<!--<div id="progressModal" class="modal-overlay">-->
+<!--    <div class="modal-content">-->
+<!--        <h3>Uploading...</h3>-->
+<!--        <progress id="progressBar" value="0" max="100" style="width:100%; height:10px;"></progress>-->
+<!--    </div>-->
+<!--</div>-->
+
+<!--<div id="toast">Notification</div>-->
+
+<!--<script>-->
+<!--    /* ICONS & HELPERS */-->
+<!--    const getIcon = (f) => {-->
+<!--        const ext = f.split('.').pop().toLowerCase();-->
+<!--        const map = {'pdf':'fa-file-pdf','jpg':'fa-file-image','png':'fa-file-image','mp4':'fa-file-video','zip':'fa-file-archive'};-->
+<!--        return map[ext] || 'fa-file';-->
+<!--    };-->
+
+<!--    function formatSize(bytes) {-->
+<!--        if(bytes===0) return '0 B';-->
+<!--        const k=1024, i=Math.floor(Math.log(bytes)/Math.log(k));-->
+<!--        return parseFloat((bytes/Math.pow(k,i)).toFixed(1))+' '+['B','KB','MB','GB'][i];-->
+<!--    }-->
+
+<!--    /* ADMIN LOGIC */-->
+<!--    let adminAuthHeader = null;-->
+<!--    let refreshTimer = null;-->
+
+<!--    function openAdminAuth() {-->
+<!--        if (adminAuthHeader) openAdminDash();-->
+<!--        else {-->
+<!--            document.getElementById('adminAuthModal').classList.add('active');-->
+<!--            document.getElementById('adminPass').value = '';-->
+<!--            document.getElementById('adminPass').focus();-->
+<!--        }-->
+<!--    }-->
+
+<!--    async function checkAdmin() {-->
+<!--        const pass = document.getElementById('adminPass').value;-->
+<!--        const creds = btoa("admin:" + pass);-->
+<!--        const header = "Basic " + creds;-->
+
+<!--        try {-->
+<!--            const res = await fetch('/admin/health', { headers: { 'Authorization': header } });-->
+<!--            if (res.ok) {-->
+<!--                adminAuthHeader = header;-->
+<!--                document.getElementById('adminAuthModal').classList.remove('active');-->
+<!--                openAdminDash(await res.json()); // Pass initial data-->
+<!--            } else { alert("Wrong password"); }-->
+<!--        } catch (e) { alert("Server error"); }-->
+<!--    }-->
+
+<!--    async function openAdminDash(preloadedData) {-->
+<!--        document.getElementById('adminDashModal').classList.add('active');-->
+
+<!--        // 1. Show data immediately if we have it-->
+<!--        if (preloadedData) updateDashUI(preloadedData);-->
+<!--        else fetchAndShowStats();-->
+
+<!--        // 2. Start Auto-Refresh (Every 2 seconds)-->
+<!--        if (refreshTimer) clearInterval(refreshTimer);-->
+<!--        refreshTimer = setInterval(fetchAndShowStats, 2000);-->
+<!--    }-->
+
+<!--    function closeAdminDash() {-->
+<!--        if (refreshTimer) clearInterval(refreshTimer);-->
+<!--        refreshTimer = null;-->
+<!--        document.getElementById('adminDashModal').classList.remove('active');-->
+<!--    }-->
+
+<!--    async function fetchAndShowStats() {-->
+<!--        try {-->
+<!--            const res = await fetch('/admin/health', { headers: { 'Authorization': adminAuthHeader } });-->
+<!--            if(res.ok) updateDashUI(await res.json());-->
+<!--            else if(res.status === 401) { // Session expired-->
+<!--                closeAdminDash();-->
+<!--                adminAuthHeader = null;-->
+<!--            }-->
+<!--        } catch(e) { console.error("Stats failed", e); }-->
+<!--    }-->
+
+<!--    function updateDashUI(data) {-->
+<!--        if(!data) return;-->
+
+<!--        // 1. CPU-->
+<!--        const cpu = data.cpu.load;-->
+<!--        document.getElementById('cpuVal').innerText = cpu + "%";-->
+<!--        setBar('cpuBar', cpu);-->
+
+<!--        // 2. RAM-->
+<!--        const ram = data.systemMemory;-->
+<!--        document.getElementById('memText').innerText = `${ram.usedGB} / ${ram.totalGB} GB`;-->
+<!--        setBar('memBar', ram.percent);-->
+
+<!--        // 3. Disk-->
+<!--        const disk = data.disk;-->
+<!--        document.getElementById('diskText').innerText = `${disk.usedGB} / ${disk.totalGB} GB`;-->
+<!--        setBar('diskBar', disk.percent);-->
+
+<!--        document.getElementById('uptimeVal').innerText = data.uptimeMinutes;-->
+<!--    }-->
+
+<!--    function setBar(id, pct) {-->
+<!--        const bar = document.getElementById(id);-->
+<!--        bar.style.width = pct + "%";-->
+<!--        bar.className = 'progress-fill ' + (pct < 60 ? 'fill-success' : pct < 85 ? 'fill-warning' : 'fill-danger');-->
+<!--    }-->
+
+<!--    /* MAIN FILE LOGIC */-->
+<!--    async function loadFiles() {-->
+<!--        const grid = document.getElementById('file-grid');-->
+<!--        grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:40px;color:#888"><i class="fas fa-spinner fa-spin fa-2x"></i></div>';-->
+
+<!--        try {-->
+<!--            const res = await fetch("files");-->
+<!--            const files = await res.json();-->
+<!--            grid.innerHTML = '';-->
+
+<!--            if(!files.length) { grid.innerHTML='<div style="grid-column:1/-1;text-align:center;padding:40px;color:#ccc"><i class="fas fa-folder-open fa-3x"></i><p>No files</p></div>'; return; }-->
+
+<!--            files.forEach(f => {-->
+<!--                const url = `${window.location.protocol}//${window.location.host}/f/${f.fileKey}`;-->
+<!--                const card = document.createElement('div');-->
+<!--                card.className = 'card';-->
+<!--                card.innerHTML = `-->
+<!--                    <i class="fas ${getIcon(f.originalFileName)} file-icon"></i>-->
+<!--                    <div class="file-name">${f.originalFileName}</div>-->
+<!--                    <div class="file-meta">${formatSize(f.size)}</div>-->
+<!--                    <div class="actions">-->
+<!--                        <button class="btn-icon" onclick="window.location.href='${url}'"><i class="fas fa-cloud-download-alt"></i></button>-->
+<!--                        <button class="btn-icon" onclick="shareLink('${url}')"><i class="fas fa-link"></i></button>-->
+<!--                        <button class="btn-icon" onclick="showQR('${url}', 'Scan to Download')" title="QR"><i class="fas fa-qrcode"></i></button>-->
+<!--                        <button class="btn-icon delete" onclick="removeFile('${f.fileKey}')"><i class="fas fa-trash"></i></button>-->
+<!--                    </div>`;-->
+<!--                grid.appendChild(card);-->
+<!--            });-->
+<!--        } catch(e) { grid.innerHTML = 'Failed to load files'; }-->
+<!--    }-->
+
+<!--    /* UPLOAD & SHARE */-->
+<!--    function handleFileSelect() {-->
+<!--        const file = document.getElementById('fileInput').files[0];-->
+<!--        if(!file) return;-->
+<!--        const xhr = new XMLHttpRequest();-->
+<!--        const fd = new FormData();-->
+<!--        fd.append("file", file);-->
+<!--        xhr.open("POST", "upload", true);-->
+
+<!--        document.getElementById('progressModal').classList.add('active');-->
+
+<!--        xhr.upload.onprogress = (e) => {-->
+<!--            if(e.lengthComputable) document.getElementById('progressBar').value = (e.loaded/e.total)*100;-->
+<!--        };-->
+<!--        xhr.onload = () => {-->
+<!--            setTimeout(() => {-->
+<!--                document.getElementById('progressModal').classList.remove('active');-->
+<!--                loadFiles();-->
+<!--            }, 500);-->
+<!--        };-->
+<!--        xhr.send(fd);-->
+<!--    }-->
+
+<!--    function shareLink(url) {-->
+<!--        navigator.clipboard.writeText(url).then(() => showToast("Copied!"));-->
+<!--    }-->
+
+<!--    function showQR(url, title) {-->
+<!--        document.getElementById('qrTitle').innerText = title || "Scan QR";-->
+<!--        document.getElementById('qrBox').innerHTML = "";-->
+<!--        document.getElementById('qrLinkText').innerText = url;-->
+<!--        new QRCode(document.getElementById('qrBox'), {text:url, width:200, height:200});-->
+<!--        document.getElementById('qrModal').classList.add('active');-->
+<!--    }-->
+
+<!--    function shareApp() { showQR(window.location.href, "Scan to Open App"); }-->
+<!--    async function removeFile(key) { if(confirm("Delete?")) { await fetch(`/files/${key}`, {method:'DELETE'}); loadFiles(); } }-->
+<!--    function closeModal(e) { if(e.target.classList.contains('modal-overlay')) e.target.classList.remove('active'); }-->
+<!--    function showToast(msg) {-->
+<!--        const t=document.getElementById('toast'); t.innerText=msg; t.classList.add('show');-->
+<!--        setTimeout(()=>t.classList.remove('show'), 2000);-->
+<!--    }-->
+
+<!--    loadFiles();-->
+<!--</script>-->
+<!--</body>-->
+<!--</html>-->
