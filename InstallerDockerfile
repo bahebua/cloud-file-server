@@ -1,0 +1,10 @@
+FROM eclipse-temurin:21-jdk
+LABEL maintainer="my-cloud-file-server"
+VOLUME /app/data
+WORKDIR /app
+
+# This assumes app.jar is in the same folder as the Dockerfile
+COPY app.jar app.jar
+
+EXPOSE 9080
+ENTRYPOINT ["java", "-jar", "app.jar"]
