@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cloud-file-server
+spec:
+  replicas: 1 # Run 1 copy
+  selector:
+    matchLabels:
+      app: cloud-file-server
+  template:
+    metadata:
+      labels:
+        app: cloud-file-server
+    spec:
+      containers:
+        - name: cloud-file-server
+          image: cloud-file-server:v1 # The image we built earlier
+          imagePullPolicy: Never # Use local image, don't try to download from internet
+          ports:
+            - containerPort: 9080
+          volumeMounts:
+            - mountPath: /app/data/storage # Where the app saves files inside the container
+              name: storage-volume
+        - name: cloudflared
+          image: cloudflare/cloudflared:latest
+          # This command tells it to tunnel whatever is on localhost:9080
+          args: ["tunnel", "--url", "http://localhost:9080"]
+      volumes:
+        - name: storage-volume
+          persistentVolumeClaim:
+            claimName: local-file-claim # Connects to the file we created in Step 2
