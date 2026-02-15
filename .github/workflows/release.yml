@@ -1,0 +1,42 @@
+name: Create Release Installer
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: windows-latest  # We use Windows to ensure .bat files are handled correctly
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up JDK 21
+      uses: actions/setup-java@v4
+      with:
+        java-version: '21'
+        distribution: 'temurin'
+        cache: maven
+
+    - name: Build with Maven
+      run: ./mvnw.cmd clean package -DskipTests
+
+    - name: Package Installer
+      run: |
+        mkdir release
+        copy target\*.jar release\app.jar
+        copy install.bat release\
+        copy launcher.bat release\
+        copy InstallerDockerfile release\Dockerfile
+        xcopy /E /I /Y k8s release\k8s
+        compress-archive -Path release\* -DestinationPath CloudFileServer_Setup.zip
+      shell: pwsh
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: CloudFileServer_Setup.zip
+        tag_name: v${{ github.run_number }}
+        name: Release v${{ github.run_number }}
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
