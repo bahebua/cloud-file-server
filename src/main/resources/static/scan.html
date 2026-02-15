@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Scan QR</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <script src="https://unpkg.com/html5-qrcode"></script>
+</head>
+<body style="font-family:Arial; text-align:center; padding:16px;">
+
+<h2>📷 Scan QR</h2>
+<div id="reader" style="width:300px; margin:auto;"></div>
+
+<script>
+    const scanner = new Html5Qrcode("reader");
+
+    Html5Qrcode.getCameras().then(cameras => {
+        if (!cameras.length) {
+            alert("No camera found");
+            return;
+        }
+
+        scanner.start(
+            cameras[0].id,
+            { fps: 10, qrbox: 250 },
+            text => {
+                scanner.stop();
+                window.location.href = text;
+            }
+        );
+    });
+</script>
+
+</body>
+</html>
