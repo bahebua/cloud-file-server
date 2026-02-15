@@ -11,9 +11,9 @@
 	<groupId>com.projects</groupId>
 	<artifactId>sharefiles</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
-	<packaging>war</packaging>
+	<packaging>jar</packaging>
 	<name>sharefiles</name>
-	<description>A FIle Sharing backed</description>
+	<description>A File Sharing Server</description>
 	<url/>
 	<licenses>
 		<license/>
