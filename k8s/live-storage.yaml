@@ -1,0 +1,28 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: local-win-app-storage-pv
+  labels:
+    type: local
+spec:
+  storageClassName: manual
+  capacity:
+    storage: 10Gi
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    path: "/mnt/host/d/k8s-data/cloud-file-server-storage"
+#  { path: "/run/desktop/mnt/host/d/k8s-data/cloud-file-server-storage" }
+#    path: "/host_mnt/d/k8s-data/cloud-file-server-storage"
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: local-file-claim
+spec:
+  storageClassName: manual
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
