@@ -1,42 +1,127 @@
-name: Create Release Installer
+name: Cross-Platform Release
 
 on:
   push:
-    branches: [ "main" ]
+    tags:
+      - 'v*' # Triggers on tags like v1.0, v1.0.1, v2.0-beta, etc.
+
+permissions:
+  contents: write
 
 jobs:
   build:
-    runs-on: windows-latest  # We use Windows to ensure .bat files are handled correctly
+    name: Build on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+          - os: macos-latest
+          - os: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+      
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
 
-    - name: Set up JDK 21
-      uses: actions/setup-java@v4
-      with:
-        java-version: '21'
-        distribution: 'temurin'
-        cache: maven
+      - name: Build JAR
+        run: ./mvnw clean package -DskipTests
+        shell: bash
 
-    - name: Build with Maven
-      run: ./mvnw.cmd clean package -DskipTests
+      - name: Stage Files (Mac & Linux)
+        if: matrix.os != 'windows-latest'
+        run: |
+          mkdir jpackage-input
+          cp target/*.jar jpackage-input/app.jar
+          cp -r k8s jpackage-input/k8s
+          cp InstallerDockerfile jpackage-input/Dockerfile
+        shell: bash
 
-    - name: Package Installer
-      run: |
-        mkdir release
-        copy target\*.jar release\app.jar
-        copy install.bat release\
-        copy launcher.bat release\
-        copy InstallerDockerfile release\Dockerfile
-        xcopy /E /I /Y k8s release\k8s
-        compress-archive -Path release\* -DestinationPath CloudFileServer_Setup.zip
-      shell: pwsh
+      - name: Stage Files (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          New-Item -ItemType Directory -Force -Path jpackage-input
+          Copy-Item target\*.jar -Destination jpackage-input\app.jar
+          Copy-Item -Recurse k8s jpackage-input\
+          Copy-Item InstallerDockerfile jpackage-input\Dockerfile
+        shell: pwsh
 
-    - name: Create GitHub Release
-      uses: softprops/action-gh-release@v1
-      with:
-        files: CloudFileServer_Setup.zip
-        tag_name: v${{ github.run_number }}
-        name: Release v${{ github.run_number }}
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # --- PACKAGING WITH README ---
+
+      - name: Package Windows
+        if: matrix.os == 'windows-latest'
+        run: |
+          jpackage --type app-image --name CloudFileServer --dest installer --input jpackage-input --main-jar app.jar --add-modules java.se,jdk.unsupported,java.management --icon src\main\resources\static\icon.ico
+          Copy-Item README.txt -Destination installer\CloudFileServer\
+          Compress-Archive -Path installer\CloudFileServer\* -DestinationPath CloudFileServer-Windows.zip
+        shell: pwsh
+
+      - name: Package Mac
+        if: matrix.os == 'macos-latest'
+        run: |
+          jpackage --type dmg --name CloudFileServer --dest installer --input jpackage-input --main-jar app.jar --add-modules java.se,jdk.unsupported,java.management
+          mkdir release-bundle
+          cp installer/*.dmg release-bundle/
+          cp README.txt release-bundle/
+          zip -r CloudFileServer-Mac.zip release-bundle/
+        shell: bash
+
+      - name: Package Linux
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update && sudo apt-get install -y fakeroot
+          jpackage --type deb --name cloud-file-server --dest installer --input jpackage-input --main-jar app.jar --add-modules java.se,jdk.unsupported,java.management
+          mkdir release-bundle
+          cp installer/*.deb release-bundle/
+          cp README.txt release-bundle/
+          zip -r CloudFileServer-Linux.zip release-bundle/
+        shell: bash
+
+      # --- UPLOAD ARTIFACTS ---
+
+      - name: Upload Windows Artifact
+        if: matrix.os == 'windows-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: CloudFileServer-Windows.zip
+
+      - name: Upload Mac Artifact
+        if: matrix.os == 'macos-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: mac-installer
+          path: CloudFileServer-Mac.zip
+
+      - name: Upload Linux Artifact
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-installer
+          path: CloudFileServer-Linux.zip
+
+  # --- FINAL RELEASE ---
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download All Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: artifacts/*
+          tag_name: ${{ github.ref_name }} # 🎯 THE FIX: Uses your actual tag (e.g., v1.0.0)
+          name: Cloud File Server ${{ github.ref_name }}
+          body: "Includes native installers for Windows, macOS, and Linux. See the bundled README.txt for installation instructions."
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
