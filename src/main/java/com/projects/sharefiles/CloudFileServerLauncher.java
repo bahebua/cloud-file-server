@@ -1,5 +1,7 @@
 package com.projects.sharefiles; // Ensure this matches your project structure
 
+import com.projects.sharefiles.util.ConfigSyncUtil;
+import com.projects.sharefiles.util.PropertiesUtil;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import javax.swing.*;
 import java.awt.*;
@@ -88,6 +90,7 @@ public class CloudFileServerLauncher {
         // --- Networking Variables ---
         String localIp = getLocalIP();
         String hostName = getHostName();
+        String port = PropertiesUtil.getValue("server.port", "9080");
 
         // --- Action: Local Mode ---
         btnLocal.addActionListener(e -> {
@@ -103,9 +106,9 @@ public class CloudFileServerLauncher {
                     new SpringApplicationBuilder(SharefilesApplication.class).headless(false).run();
                     log("\n✅ Server is running!");
                     log("--------------------------------");
-                    log("Local:   http://localhost:9080/rest/cloudfileserver");
-                    log("Network: http://" + localIp + ":9080/rest/cloudfileserver");
-                    log("Device:  http://" + hostName + ".local/rest/cloudfileserver");
+                    log("Local:   http://localhost:" + port + "/rest/cloudfileserver");
+                    log("Network: http://" + localIp + ":" + port + "/rest/cloudfileserver");
+                    log("Device:  http://" + hostName + ".local:" + port + "/rest/cloudfileserver");
                 } catch (Exception ex) {
                     log("Error starting local server: " + ex.getMessage());
                     SwingUtilities.invokeLater(() -> {
@@ -123,6 +126,8 @@ public class CloudFileServerLauncher {
             isDockerRunning = true;
             String winPath = pathBox.getText();
 
+            String serverPort = PropertiesUtil.getValue("server.port", "9080");
+
             new Thread(() -> {
                 try {
                     String k8sPath = translatePathForDocker(winPath);
@@ -131,6 +136,7 @@ public class CloudFileServerLauncher {
 
                     // 1. Update YAML
                     String k8sDir = getK8sDir();
+                    ConfigSyncUtil.injectPort(k8sDir, serverPort);
                     Path templatePath = Paths.get(k8sDir, "storage.yaml");
                     Path livePath = Paths.get(k8sDir, "live-storage.yaml");
                     String content = new String(Files.readAllBytes(templatePath));
@@ -140,6 +146,7 @@ public class CloudFileServerLauncher {
                     // 2. Execute K8s Commands
                     log("\nBuilding and Deploying... (This may take a moment)");
                     String dockerDir = Files.exists(Paths.get("Dockerfile")) ? "." : "app";
+                    ConfigSyncUtil.injectPort(dockerDir, serverPort);
                     String dockerFile = Files.exists(Paths.get("Dockerfile")) ? "Dockerfile" : "app/Dockerfile";
                     runCommand("docker build -t cloud-file-server:v1 "+ dockerDir);
                     runCommand("docker build -t cloud-file-server:v1 -f " + dockerFile + " " + dockerDir);

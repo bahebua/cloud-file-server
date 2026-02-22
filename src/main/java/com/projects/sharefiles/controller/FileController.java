@@ -2,6 +2,7 @@ package com.projects.sharefiles.controller;
 
 import com.projects.sharefiles.model.FileMeta;
 import com.projects.sharefiles.service.FileStorageService;
+import com.projects.sharefiles.util.PropertiesUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.InputStreamResource;
@@ -25,6 +26,8 @@ public class FileController {
     @Autowired
     private FileStorageService service;
 
+    String port = PropertiesUtil.getValue("server.port", "9080");
+
     @PostMapping("upload")
     public Map<String, String> upload(@RequestParam("file") MultipartFile file,
                                       @RequestParam(value = "ttlMinutes", required = false) Long ttlMinutes)
@@ -32,7 +35,7 @@ public class FileController {
 
         FileMeta meta = service.save(file, ttlMinutes);
 
-        String url = "http://localhost:8080/f/" + meta.getFileKey();
+        String url = "http://localhost:"+port+"/f/" + meta.getFileKey();
 
         Map<String, String> response = new HashMap<>();
         response.put("key", meta.getFileKey());
