@@ -15,6 +15,8 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.*;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Instant;
 import java.util.Collection;
 import java.util.HashMap;
@@ -46,7 +48,7 @@ public class FileController {
     }
 
     @GetMapping("f/{key}")
-    public ResponseEntity<FileSystemResource> download(@PathVariable String key,
+    public ResponseEntity<Resource> download(@PathVariable String key,
                                                        @RequestHeader HttpHeaders headers) throws IOException {
 
         FileMeta meta = service.getMeta(key);
@@ -62,13 +64,6 @@ public class FileController {
             service.deleteByKey(key);
             return ResponseEntity.notFound().build();
         }
-
-//        return ResponseEntity.ok()
-//                .header(HttpHeaders.CONTENT_DISPOSITION,
-//                        "attachment; filename=\"" + meta.getOriginalFileName() + "\"")
-//                .contentLength(meta.getSize())
-//                .contentType(MediaType.APPLICATION_OCTET_STREAM)
-//                .body(new FileSystemResource(file));
         long fileLength = file.length();
         String range = headers.getFirst(HttpHeaders.RANGE);
 
@@ -111,7 +106,40 @@ public class FileController {
                         "bytes " + start + "-" + end + "/" + fileLength)
                 .contentLength(contentLength)
                 .contentType(MediaType.APPLICATION_OCTET_STREAM)
-                .body((FileSystemResource) resource);
+                .body(resource);
+    }
+
+    @GetMapping("view/{key}")
+    public ResponseEntity<Resource> viewInBrowser(@PathVariable String key) {
+
+        FileMeta meta = service.getMeta(key);
+        File file = service.getFile(key);
+
+        if (meta == null || file == null || !file.exists()) {
+            return ResponseEntity.notFound().build();
+        }
+        if (meta.getExpiresAt() != null && meta.getExpiresAt().isBefore(Instant.now())) {
+            service.deleteByKey(key);
+            return ResponseEntity.notFound().build();
+        }
+
+        // Dynamically guess the file type (e.g., image/png, application/pdf)
+        String contentType = "application/octet-stream"; // Default fallback
+        try {
+            String probedType = Files.probeContentType(file.toPath());
+            if (probedType != null) {
+                contentType = probedType;
+            }
+        } catch (IOException e) {
+            System.err.println("Could not determine file type for " + meta.getOriginalFileName());
+        }
+
+        return ResponseEntity.ok()
+                // "inline" tells the browser to render it on screen
+                .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + meta.getOriginalFileName() + "\"")
+                .contentType(MediaType.parseMediaType(contentType))
+                .contentLength(file.length())
+                .body(new FileSystemResource(file));
     }
 
     @DeleteMapping("files/{key}")
