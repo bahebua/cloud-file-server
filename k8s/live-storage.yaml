@@ -12,8 +12,6 @@ spec:
     - ReadWriteOnce
   hostPath:
     path: "/mnt/host/d/k8s-data/cloud-file-server-storage"
-#  { path: "/run/desktop/mnt/host/d/k8s-data/cloud-file-server-storage" }
-#    path: "/host_mnt/d/k8s-data/cloud-file-server-storage"
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim

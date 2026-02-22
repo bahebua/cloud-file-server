@@ -44,7 +44,7 @@ if %ERRORLEVEL% NEQ 0 (
 
 echo.
 echo [INFO] Build Successful! Starting Server...
-echo [INFO] Access Local: http://localhost:8080/rest/cloudfileserver
+echo [INFO] Access Local: http://localhost:9080/rest/cloudfileserver
 echo -----------------------------------------------------
 java -jar target/*.jar
 pause
@@ -99,7 +99,15 @@ echo =====================================================
 echo    🚀 DEPLOYMENT SUCCESSFUL!
 echo =====================================================
 echo.
-echo [LOCAL ACCESS]  http://localhost:8080/rest/cloudfileserver
+
+:: Parse the application.properties file to find the port dynamically
+FOR /F "tokens=2 delims==" %%A IN ('findstr "^server.port=" src\main\resources\application.properties') DO set PORT=%%A
+
+:: Fallback to 8080 if the property isn't found
+IF "%PORT%"=="" SET PORT=9080
+
+:: Print the dynamic port
+echo [LOCAL ACCESS] http://localhost:%PORT%/rest/cloudfileserver
 echo [PUBLIC URL]    %TUNNEL_URL%
 echo.
 echo [NOTE] Your persistent files are in: D:\k8s-data
