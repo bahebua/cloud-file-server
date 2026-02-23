@@ -10,7 +10,12 @@
     <meta name="mobile-web-app-capable" content="yes">
     <link rel="manifest" href="manifest.json">
     <title>Cloud File Server</title>
-
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.4.0/model-viewer.min.js"></script>
+    <link href="https://vjs.zencdn.net/8.10.0/video-js.css" rel="stylesheet" />
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/viewerjs/1.11.6/viewer.min.css" rel="stylesheet">
+    <script src="https://vjs.zencdn.net/8.10.0/video.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/viewerjs/1.11.6/viewer.min.js"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
@@ -36,6 +41,7 @@
             margin: 0;
             padding-bottom: 100px;
             padding-top: max(env(safe-area-inset-top), 20px);
+            min-height: 100vh;
         }
 
         header {
@@ -49,10 +55,17 @@
         .header-btn {
             background: #f1f5f9; border: none; font-size: 1.1rem; color: var(--primary);
             border-radius: 50%; width: 42px; height: 42px; cursor: pointer;
-            display: flex; align-items: center; justify-content: center;
+            display: flex; align-items: center; justify-content: center; transition: all 0.2s;
         }
+        .header-btn:hover { background: #e2e8f0; }
+        .header-btn.active-mode { background: var(--primary); color: white; }
 
         .container { padding: 20px; max-width: 1200px; margin: 0 auto; }
+
+        /* Navigation Breadcrumbs for Folders */
+        #breadcrumb { margin-bottom: 16px; font-weight: 600; color: var(--text-light); display: none; align-items: center; cursor: pointer; }
+        #breadcrumb:hover { color: var(--primary); }
+
         .file-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(155px, 1fr)); gap: 16px; }
 
         .card {
@@ -60,10 +73,10 @@
             box-shadow: 0 2px 4px rgba(0,0,0,0.05);
             display: flex; flex-direction: column; align-items: center; text-align: center;
             transition: transform 0.2s ease, box-shadow 0.2s ease;
+            position: relative;
         }
         .card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
 
-        /* 🎯 New styles to make the file clickable */
         .file-link {
             text-decoration: none; color: inherit; width: 100%;
             display: flex; flex-direction: column; align-items: center; cursor: pointer;
@@ -71,9 +84,15 @@
         .file-link:hover .file-name { color: var(--primary); }
 
         .file-icon { font-size: 2.8rem; color: var(--primary); margin: 12px 0 16px 0; }
-        .file-name { font-size: 0.95rem; font-weight: 600; width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 4px; transition: color 0.2s; }
-        .file-meta { font-size: 0.75rem; color: var(--text-light); margin-bottom: 16px; }
+        .folder-icon { color: #fbbf24; } /* Golden yellow for folders */
 
+        .file-name { font-size: 0.95rem; font-weight: 600; width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 4px; transition: color 0.2s; }
+        .file-meta { font-size: 0.75rem; color: var(--text-light); margin-bottom: 16px; height: 14px; }
+        .file-thumb {
+            width: 64px; height: 64px; object-fit: cover;
+            border-radius: 12px; margin: 12px 0 16px 0;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+        }
         .actions { display: flex; gap: 6px; width: 100%; justify-content: space-evenly; border-top: 1px solid #f1f5f9; padding-top: 12px; }
         .btn-icon { background: transparent; color: var(--text-light); border: none; width: 36px; height: 36px; border-radius:10px; cursor: pointer; font-size: 1.1rem; display:flex; align-items:center; justify-content:center; transition: all 0.2s;}
         .btn-icon:hover { background: #f1f5f9; color: var(--primary); }
@@ -87,30 +106,30 @@
             font-size: 1.75rem; display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 100;
         }
 
-        .modal-overlay {
-            display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); backdrop-filter: blur(4px);
-            z-index: 200; justify-content: center; align-items: center;
+        /* 🎯 Drag & Drop Overlay */
+        #dragOverlay {
+            position: fixed; inset: 0; background: rgba(79, 70, 229, 0.9);
+            color: white; z-index: 999; display: flex; flex-direction: column;
+            align-items: center; justify-content: center; visibility: hidden; opacity: 0;
+            transition: opacity 0.2s ease; pointer-events: none;
         }
+        #dragOverlay.active { visibility: visible; opacity: 1; pointer-events: all; }
+        #dragOverlay i { font-size: 5rem; margin-bottom: 20px; animation: bounce 1s infinite alternate; }
+        @keyframes bounce { from { transform: translateY(0); } to { transform: translateY(-15px); } }
+
+        /* Modals and Toasts */
+        .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); backdrop-filter: blur(4px); z-index: 200; justify-content: center; align-items: center; }
         .modal-overlay.active { display: flex; }
-        .modal-content {
-            background: var(--surface); padding: 24px; border-radius: 24px; text-align: center;
-            width: 90%; max-width: 340px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1);
-        }
+        .modal-content { background: var(--surface); padding: 24px; border-radius: 24px; text-align: center; width: 90%; max-width: 340px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); }
 
         .stat-box { background: #f8fafc; padding: 12px; border-radius: 12px; border: 1px solid #e2e8f0; margin-bottom: 12px; text-align: left; }
         .stat-label { font-size: 0.75rem; color: var(--text-light); text-transform: uppercase; margin-bottom: 4px; }
         .stat-value { font-size: 1.2rem; font-weight: 700; color: var(--text); }
         .progress-bg { width: 100%; height: 6px; background: #e2e8f0; border-radius: 3px; margin-top: 8px; overflow: hidden; }
         .progress-fill { height: 100%; background: var(--primary); width: 0%; transition: width 0.5s ease; }
-        .fill-danger { background: var(--danger); }
-        .fill-warning { background: var(--warning); }
-        .fill-success { background: var(--success); }
+        .fill-danger { background: var(--danger); } .fill-warning { background: var(--warning); } .fill-success { background: var(--success); }
 
-        #toast {
-            visibility: hidden; background-color: #0f172a; color: #fff;
-            text-align: center; border-radius: 50px; padding: 12px 24px;
-            position: fixed; z-index: 300; left: 50%; bottom: 40px; transform: translateX(-50%);
-        }
+        #toast { visibility: hidden; background-color: #0f172a; color: #fff; text-align: center; border-radius: 50px; padding: 12px 24px; position: fixed; z-index: 300; left: 50%; bottom: 40px; transform: translateX(-50%); }
         #toast.show { visibility: visible; }
     </style>
 </head>
@@ -119,6 +138,7 @@
 <header>
     <h1><i class="fas fa-cloud" style="margin-right:10px; color:var(--primary);"></i>Cloud File Server</h1>
     <div class="header-actions">
+        <button id="btnViewMode" class="header-btn" onclick="toggleViewMode()" title="Toggle Folder View"><i class="fas fa-th-large"></i></button>
         <button class="header-btn" onclick="openAdminAuth()" title="Server Status"><i class="fas fa-server"></i></button>
         <button class="header-btn" onclick="shareApp()" title="Share App"><i class="fas fa-qrcode"></i></button>
         <button class="header-btn" onclick="loadFiles()" title="Refresh"><i class="fas fa-sync-alt"></i></button>
@@ -126,11 +146,46 @@
 </header>
 
 <div class="container">
+    <div id="breadcrumb" onclick="openFolder(null)"><i class="fas fa-arrow-left" style="margin-right:8px;"></i> Back to Folders</div>
+    <div id="searchContainer" style="margin-bottom: 20px; display: flex; align-items: center; background: var(--surface); padding: 12px 20px; border-radius: 16px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); transition: box-shadow 0.2s;">
+        <i class="fas fa-search" style="color: var(--text-light); margin-right: 12px; font-size: 1.1rem;"></i>
+        <input type="text" id="searchInput" placeholder="Search files..." onkeyup="renderUI()" style="border: none; outline: none; width: 100%; font-size: 1rem; background: transparent; color: var(--text);">
+        <button onclick="document.getElementById('searchInput').value=''; renderUI();" style="background:none; border:none; color:var(--text-light); cursor:pointer; font-size:1.1rem;"><i class="fas fa-times"></i></button>
+    </div>
     <div id="file-grid" class="file-grid"></div>
 </div>
 
-<input type="file" id="fileInput" style="display: none;" onchange="handleFileSelect()">
+<input type="file" id="fileInput" style="display: none;" multiple onchange="handleFileSelect(event)">
+<div id="bulkActionBar" style="display: none; position: fixed; bottom: 100px; left: 50%; transform: translateX(-50%); background: var(--surface); padding: 12px 24px; border-radius: 30px; box-shadow: 0 10px 25px rgba(0,0,0,0.15); z-index: 100; align-items: center; gap: 15px;">
+    <span id="bulkCount" style="font-weight: 600; color: var(--text);">0 selected</span>
+    <button onclick="downloadSelectedZip()" style="background: var(--primary); color: white; border: none; padding: 8px 16px; border-radius: 20px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px;">
+        <i class="fas fa-file-archive"></i> Download ZIP
+    </button>
+    <button onclick="deleteSelectedFiles()" style="background: var(--danger); color: white; border: none; padding: 8px 16px; border-radius: 20px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px;">
+        <i class="fas fa-trash"></i> Delete
+    </button>
+</div>
+<div id="ttlWidget" style="position: fixed; bottom: 37px; right: 105px; display: flex; align-items: center; background: var(--surface); border-radius: 25px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); padding: 5px; z-index: 100; transition: all 0.3s ease;">
+    <button id="ttlToggleBtn" onclick="toggleTtlMode()" style="background: var(--primary); color: white; border: none; padding: 10px 15px; border-radius: 20px; font-weight: 600; cursor: pointer; transition: background 0.3s ease;">Keep Forever</button>
+
+    <div id="ttlControls" style="display: none; align-items: center; margin-left: 8px; padding-right: 5px;">
+        <select id="ttlValue" style="border: none; background: #f1f5f9; padding: 8px; border-radius: 8px; margin-right: 5px; cursor: pointer; font-weight:bold; color: var(--text); outline:none;">
+            <option value="1">1</option><option value="2">2</option><option value="6">6</option>
+            <option value="12">12</option><option value="24">24</option><option value="30">30</option>
+        </select>
+        <select id="ttlUnit" style="border: none; background: #f1f5f9; padding: 8px; border-radius: 8px; cursor: pointer; font-weight:bold; color: var(--text); outline:none;">
+            <option value="1">Mins</option><option value="60" selected>Hours</option>
+            <option value="1440">Days</option><option value="10080">Weeks</option>
+            <option value="43200">Months</option><option value="525600">Years</option>
+        </select>
+    </div>
+</div>
 <button class="fab" onclick="document.getElementById('fileInput').click()"><i class="fas fa-plus"></i></button>
+
+<div id="dragOverlay">
+    <i class="fas fa-cloud-upload-alt"></i>
+    <h2>Drop files here to upload</h2>
+</div>
 
 <div id="adminAuthModal" class="modal-overlay" onclick="closeModal(event)">
     <div class="modal-content">
@@ -190,18 +245,44 @@
     </div>
 </div>
 
+<div id="mediaModal" class="modal-overlay" onclick="closeMediaModal(event)">
+    <div class="modal-content" style="max-width: 95vw; width: 900px; height: 85vh; display: flex; flex-direction: column; padding: 0; background: #0f172a; overflow: hidden; border-radius: 16px;">
+
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 20px; background: rgba(0,0,0,0.3); color: white;">
+            <span id="mediaTitle" style="font-weight: 600; font-size: 1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 80%;">File Name</span>
+            <button onclick="closeMediaModal(event, true)" style="background: rgba(255,255,255,0.1); color: white; border: none; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: 0.2s;">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+
+        <div id="mediaContainer" style="flex: 1; position: relative; display: flex; justify-content: center; align-items: center; background: #000; width: 100%; height: 100%;">
+        </div>
+    </div>
+</div>
+
 <div id="toast">Notification</div>
 
 <script>
-    /* CONFIGURATION
-       The application assumes it is hosted at this context path.
-    */
     const BASE_PATH = "/rest/cloudfileserver/";
 
-    /* ICONS & HELPERS */
+    // 🎯 State Management for Virtual Folders
+    let allFilesData = [];
+    let isOrganizedMode = false;
+    let currentCategory = null; // null means viewing root folders or scattered
+
+    // Category mappings based on extensions
+    const CATEGORIES = {
+        'Images': { icon: 'fa-images', exts: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'] },
+        'Videos': { icon: 'fa-video', exts: ['mp4', 'mov', 'avi', 'mkv', 'webm'] },
+        'Documents': { icon: 'fa-file-alt', exts: ['pdf', 'doc', 'docx', 'txt', 'xls', 'xlsx', 'ppt', 'pptx'] },
+        'Archives': { icon: 'fa-file-archive', exts: ['zip', 'rar', 'tar', 'gz', '7z'] },
+        'Installers': { icon: 'fa-box', exts: ['exe', 'msi', 'apk', 'dmg', 'deb'] },
+        'Others': { icon: 'fa-file', exts: [] } // Fallback
+    };
+
     const getIcon = (f) => {
         const ext = f.split('.').pop().toLowerCase();
-        const map = {'pdf':'fa-file-pdf','jpg':'fa-file-image','jpeg':'fa-file-image','png':'fa-file-image','gif':'fa-file-image','mp4':'fa-file-video','zip':'fa-file-archive','txt':'fa-file-alt'};
+        const map = {'pdf':'fa-file-pdf','jpg':'fa-file-image','jpeg':'fa-file-image','png':'fa-file-image','gif':'fa-file-image','mp4':'fa-file-video','zip':'fa-file-archive','txt':'fa-file-alt','exe':'fa-windows','apk':'fa-android'};
         return map[ext] || 'fa-file';
     };
 
@@ -211,7 +292,211 @@
         return parseFloat((bytes/Math.pow(k,i)).toFixed(1))+' '+['B','KB','MB','GB'][i];
     }
 
-    /* ADMIN LOGIC */
+    function getCategoryForFile(filename) {
+        const ext = filename.split('.').pop().toLowerCase();
+        for (const [cat, data] of Object.entries(CATEGORIES)) {
+            if (data.exts.includes(ext)) return cat;
+        }
+        return 'Others';
+    }
+
+    /* MAIN FILE LOGIC */
+    async function loadFiles() {
+        const grid = document.getElementById('file-grid');
+        grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:40px;color:#888"><i class="fas fa-spinner fa-spin fa-2x"></i></div>';
+        try {
+            const res = await fetch(BASE_PATH + "files");
+            allFilesData = await res.json();
+            renderUI();
+        } catch(e) { grid.innerHTML = 'Failed to load files'; }
+    }
+
+    // 🎯 The Render Engine: Decides what to draw based on current mode
+    // 🎯 The Render Engine: Decides what to draw based on current mode
+    function renderUI() {
+        const grid = document.getElementById('file-grid');
+        const breadcrumb = document.getElementById('breadcrumb');
+        grid.innerHTML = '';
+
+        if(!allFilesData.length) {
+            breadcrumb.style.display = 'none';
+            grid.innerHTML='<div style="grid-column:1/-1;text-align:center;padding:40px;color:#ccc"><i class="fas fa-folder-open fa-3x"></i><p>No files</p></div>';
+            return;
+        }
+
+        if (isOrganizedMode && currentCategory === null) {
+            // 📂 View 1: Show Folders
+            breadcrumb.style.display = 'none';
+            const catCounts = {};
+            allFilesData.forEach(f => {
+                const cat = getCategoryForFile(f.originalFileName);
+                catCounts[cat] = (catCounts[cat] || 0) + 1;
+            });
+
+            Object.keys(catCounts).forEach(cat => {
+                const card = document.createElement('div');
+                card.className = 'card';
+                // Folder cards don't use thumbnails or checkboxes
+                card.innerHTML = `
+                    <a class="file-link" onclick="openFolder('${cat}')">
+                        <i class="fas fa-folder folder-icon file-icon"></i>
+                        <div class="file-name">${cat}</div>
+                        <div class="file-meta">${catCounts[cat]} files</div>
+                    </a>`;
+                grid.appendChild(card);
+            });
+        } else {
+            // 📄 View 2: Show Actual Files (either all of them, or filtered by category)
+            breadcrumb.style.display = (isOrganizedMode && currentCategory !== null) ? 'flex' : 'none';
+
+            let filesToRender = allFilesData;
+            const searchTerm = document.getElementById('searchInput') ? document.getElementById('searchInput').value.toLowerCase() : '';
+            if (isOrganizedMode && currentCategory !== null) {
+                filesToRender = allFilesData.filter(f => getCategoryForFile(f.originalFileName) === currentCategory);
+            }
+
+            if (searchTerm !== '') {
+                filesToRender = filesToRender.filter(f => f.originalFileName.toLowerCase().includes(searchTerm));
+            }
+
+            filesToRender.forEach(f => {
+                const downloadUrl = `${window.location.protocol}//${window.location.host}${BASE_PATH}f/${f.fileKey}`;
+                const viewUrl = `${window.location.protocol}//${window.location.host}${BASE_PATH}view/${f.fileKey}`;
+
+                const ext = f.originalFileName.split('.').pop().toLowerCase();
+                const isImage = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(ext);
+                const isVideo = ['mp4', 'webm', 'ogg', 'mov'].includes(ext);
+                const isAudio = ['mp3', 'wav', 'flac', 'aac', 'm4a'].includes(ext);
+                const is3D = ['gltf', 'glb'].includes(ext);
+                const isPdf = ext === 'pdf';
+
+                const card = document.createElement('div');
+                card.className = 'card';
+
+                // Set Thumbnail or FontAwesome Icon
+                const iconHtml = isImage
+                    ? `<img src="${BASE_PATH}thumb/${f.fileKey}" class="file-thumb" loading="lazy" alt="thumb">`
+                    : `<i class="fas ${getIcon(f.originalFileName)} file-icon"></i>`;
+
+                // 🎯 THE FIX: Smart Click Routing
+                let clickAction = '';
+                const isAndroidChrome = /Android/i.test(navigator.userAgent) && /Chrome/i.test(navigator.userAgent) && !/SamsungBrowser/i.test(navigator.userAgent);
+                const supportsNativePDF = isAndroidChrome || navigator.pdfViewerEnabled === true;
+                if (isImage || isVideo || isAudio || is3D || (isPdf && !supportsNativePDF)) {
+                    // Supported Media: Open the Lightbox Modal
+                    clickAction = `onclick="openMedia('${f.fileKey}', '${f.originalFileName}')" title="Preview Media"`;
+                } else if (isPdf) {
+                    // PDF: Open safely in a native new tab to prevent iframe deadlock
+                    clickAction = `href="${viewUrl}" target="_blank" title="View PDF"`;
+                } else {
+                    // Unsupported (ZIP, EXE): Instantly trigger the download
+                    clickAction = `href="${downloadUrl}" title="Download File"`;
+                }
+
+                card.innerHTML = `
+                    <input type="checkbox" class="file-checkbox" value="${f.fileKey}" onchange="handleSelectionChange()" style="position: absolute; top: 12px; left: 12px; width: 18px; height: 18px; cursor: pointer; z-index: 10;">
+                    <a ${clickAction} class="file-link" style="cursor: pointer;">
+                        ${iconHtml}
+                        <div class="file-name">${f.originalFileName}</div>
+                    </a>
+                    <div class="file-meta">${formatSize(f.size)}</div>
+                    <div class="actions">
+                        <button class="btn-icon" onclick="window.location.href='${downloadUrl}'" title="Force Download"><i class="fas fa-cloud-download-alt"></i></button>
+                        <button class="btn-icon" onclick="shareLink('${viewUrl}')" title="Copy View Link"><i class="fas fa-link"></i></button>
+                        <button class="btn-icon" onclick="showQR('${viewUrl}', '${f.originalFileName}')" title="Show QR Code"><i class="fas fa-qrcode"></i></button>
+                        <button class="btn-icon delete" onclick="removeFile('${f.fileKey}')" title="Delete File"><i class="fas fa-trash"></i></button>
+                    </div>`;
+                grid.appendChild(card);
+            });
+        }
+    }
+
+    // Toggle button logic
+    function toggleViewMode() {
+        isOrganizedMode = !isOrganizedMode;
+        currentCategory = null;
+
+        const btn = document.getElementById('btnViewMode');
+        if (isOrganizedMode) {
+            btn.classList.add('active-mode');
+            btn.innerHTML = '<i class="fas fa-folder"></i>'; // Change icon to folder
+        } else {
+            btn.classList.remove('active-mode');
+            btn.innerHTML = '<i class="fas fa-th-large"></i>'; // Change icon back to grid
+        }
+        renderUI();
+    }
+
+    function openFolder(category) {
+        currentCategory = category;
+        renderUI();
+    }
+
+    /* 🎯 DRAG AND DROP UPLOAD ENGINE */
+    let dragCounter = 0;
+    const dragOverlay = document.getElementById('dragOverlay');
+
+    window.addEventListener('dragenter', (e) => {
+        e.preventDefault(); dragCounter++;
+        dragOverlay.classList.add('active');
+    });
+    window.addEventListener('dragleave', (e) => {
+        e.preventDefault(); dragCounter--;
+        if (dragCounter === 0) dragOverlay.classList.remove('active');
+    });
+    window.addEventListener('dragover', (e) => e.preventDefault());
+    window.addEventListener('drop', (e) => {
+        e.preventDefault(); dragCounter = 0; dragOverlay.classList.remove('active');
+        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+            startBulkUpload(Array.from(e.dataTransfer.files));
+        }
+    });
+
+    // Handle normal input file selection
+    function handleFileSelect(e) {
+        if (!e.target.files.length) return;
+        startBulkUpload(Array.from(e.target.files));
+    }
+
+    function startBulkUpload(files) {
+        document.getElementById('progressModal').classList.add('active');
+
+        // Fire off all uploads at the same time, wait for ALL of them to finish
+        Promise.all(files.map(f => uploadFileObject(f))).then(() => {
+            setTimeout(() => {
+                document.getElementById('progressModal').classList.remove('active');
+                document.getElementById('fileInput').value = ''; // clear input
+                loadFiles(); // refresh grid once
+            }, 500);
+        }).catch(() => {
+            alert("One or more files failed to upload.");
+            document.getElementById('progressModal').classList.remove('active');
+            loadFiles(); // Refresh anyway to show the files that *did* succeed
+        });
+    }
+
+    function uploadFileObject(file) {
+        const xhr = new XMLHttpRequest();
+        const fd = new FormData();
+        fd.append("file", file);
+        fd.append("ttlMinutes", getTtlMinutes());
+        xhr.open("POST", BASE_PATH + "upload", true);
+        document.getElementById('progressModal').classList.add('active');
+
+        xhr.upload.onprogress = (e) => {
+            if(e.lengthComputable) document.getElementById('progressBar').value = (e.loaded/e.total)*100;
+        };
+        xhr.onload = () => {
+            setTimeout(() => {
+                document.getElementById('progressModal').classList.remove('active');
+                document.getElementById('fileInput').value = ''; // Reset input
+                loadFiles();
+            }, 500);
+        };
+        xhr.send(fd);
+    }
+
+    /* ADMIN LOGIC (Restored from old file) */
     let adminAuthHeader = null;
     let refreshTimer = null;
 
@@ -287,66 +572,7 @@
         bar.className = 'progress-fill ' + (pct < 60 ? 'fill-success' : pct < 85 ? 'fill-warning' : 'fill-danger');
     }
 
-    /* MAIN FILE LOGIC */
-    async function loadFiles() {
-        const grid = document.getElementById('file-grid');
-        grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:40px;color:#888"><i class="fas fa-spinner fa-spin fa-2x"></i></div>';
-
-        try {
-            const res = await fetch(BASE_PATH + "files");
-            const files = await res.json();
-            grid.innerHTML = '';
-
-            if(!files.length) { grid.innerHTML='<div style="grid-column:1/-1;text-align:center;padding:40px;color:#ccc"><i class="fas fa-folder-open fa-3x"></i><p>No files</p></div>'; return; }
-
-            files.forEach(f => {
-                // 🎯 The two distinct URLs for Viewing vs. Downloading
-                const downloadUrl = `${window.location.protocol}//${window.location.host}${BASE_PATH}f/${f.fileKey}`;
-                const viewUrl = `${window.location.protocol}//${window.location.host}${BASE_PATH}view/${f.fileKey}`;
-
-                const card = document.createElement('div');
-                card.className = 'card';
-                card.innerHTML = `
-                    <a href="${viewUrl}" target="_blank" class="file-link" title="Click to view">
-                        <i class="fas ${getIcon(f.originalFileName)} file-icon"></i>
-                        <div class="file-name">${f.originalFileName}</div>
-                    </a>
-                    <div class="file-meta">${formatSize(f.size)}</div>
-                    <div class="actions">
-                        <button class="btn-icon" onclick="window.location.href='${downloadUrl}'" title="Force Download"><i class="fas fa-cloud-download-alt"></i></button>
-                        <button class="btn-icon" onclick="shareLink('${viewUrl}')" title="Copy View Link"><i class="fas fa-link"></i></button>
-                        <button class="btn-icon" onclick="showQR('${viewUrl}', 'Scan to View')" title="Show QR Code"><i class="fas fa-qrcode"></i></button>
-                        <button class="btn-icon delete" onclick="removeFile('${f.fileKey}')" title="Delete File"><i class="fas fa-trash"></i></button>
-                    </div>`;
-                grid.appendChild(card);
-            });
-        } catch(e) { grid.innerHTML = 'Failed to load files'; }
-    }
-
-    /* UPLOAD & SHARE */
-    function handleFileSelect() {
-        const file = document.getElementById('fileInput').files[0];
-        if(!file) return;
-        const xhr = new XMLHttpRequest();
-        const fd = new FormData();
-        fd.append("file", file);
-
-        xhr.open("POST", BASE_PATH + "upload", true);
-
-        document.getElementById('progressModal').classList.add('active');
-
-        xhr.upload.onprogress = (e) => {
-            if(e.lengthComputable) document.getElementById('progressBar').value = (e.loaded/e.total)*100;
-        };
-        xhr.onload = () => {
-            setTimeout(() => {
-                document.getElementById('progressModal').classList.remove('active');
-                loadFiles();
-            }, 500);
-        };
-        xhr.send(fd);
-    }
-
+    /* SHARE & UTILITY LOGIC (Restored from old file) */
     function shareLink(url) {
         // 1. Try the modern, secure clipboard API first
         if (navigator.clipboard && window.isSecureContext) {
@@ -362,7 +588,7 @@
         }
     }
 
-    // 🎯 THE FIX: The classic hidden-textarea trick that works on HTTP
+    // 🎯 The classic hidden-textarea trick that works on HTTP
     function fallbackCopy(text) {
         const textArea = document.createElement("textarea");
         textArea.value = text;
@@ -380,11 +606,8 @@
 
         try {
             const successful = document.execCommand('copy');
-            if (successful) {
-                showToast("Copied!");
-            } else {
-                showToast("Copy failed");
-            }
+            if (successful) showToast("Copied!");
+            else showToast("Copy failed");
         } catch (err) {
             console.error("Fallback copy failed", err);
             showToast("Copy failed");
@@ -392,10 +615,6 @@
 
         document.body.removeChild(textArea);
     }
-
-<!--    function shareLink(url) {-->
-<!--        navigator.clipboard.writeText(url).then(() => showToast("Copied!"));-->
-<!--    }-->
 
     function showQR(url, title) {
         document.getElementById('qrTitle').innerText = title || "Scan QR";
@@ -415,11 +634,193 @@
     }
 
     function closeModal(e) { if(e.target.classList.contains('modal-overlay')) e.target.classList.remove('active'); }
+
     function showToast(msg) {
-        const t=document.getElementById('toast'); t.innerText=msg; t.classList.add('show');
+        const t=document.getElementById('toast');
+        t.innerText=msg;
+        t.classList.add('show');
         setTimeout(()=>t.classList.remove('show'), 2000);
     }
 
+    // 🎯 SURGICAL INJECTION: TTL State and Calculation Logic
+    let isBurnMode = false;
+
+    function toggleTtlMode() {
+        isBurnMode = !isBurnMode;
+        const btn = document.getElementById('ttlToggleBtn');
+        const controls = document.getElementById('ttlControls');
+
+        if (isBurnMode) {
+            btn.innerText = "Burn in";
+            btn.style.background = "var(--danger)"; // Turn the button red!
+            controls.style.display = "flex";
+        } else {
+            btn.innerText = "Keep Forever";
+            btn.style.background = "var(--primary)";
+            controls.style.display = "none";
+        }
+    }
+
+    function getTtlMinutes() {
+        if (!isBurnMode) return 0; // 0 means Keep Forever
+        const val = parseInt(document.getElementById('ttlValue').value);
+        const multiplier = parseInt(document.getElementById('ttlUnit').value);
+        return val * multiplier;
+    }
+
+    // 🎯 SURGICAL INJECTION: Bulk ZIP Logic
+    function handleSelectionChange() {
+        const checkedBoxes = document.querySelectorAll('.file-checkbox:checked');
+        const bulkBar = document.getElementById('bulkActionBar');
+        const countSpan = document.getElementById('bulkCount');
+
+        if (checkedBoxes.length > 0) {
+            bulkBar.style.display = 'flex';
+            countSpan.innerText = checkedBoxes.length + " selected";
+        } else {
+            bulkBar.style.display = 'none';
+        }
+    }
+
+    function downloadSelectedZip() {
+        const checkedBoxes = document.querySelectorAll('.file-checkbox:checked');
+        const keys = Array.from(checkedBoxes).map(cb => cb.value);
+
+        if (keys.length === 0) return;
+
+        // Uncheck everything and hide the bar
+        checkedBoxes.forEach(cb => cb.checked = false);
+        handleSelectionChange();
+
+        // Trigger the backend ZIP generator!
+        window.location.href = BASE_PATH + "download/zip?keys=" + keys.join(',');
+    }
+
+    // 🎯 SURGICAL INJECTION: Trigger the Bulk Delete
+    async function deleteSelectedFiles() {
+        const checkedBoxes = document.querySelectorAll('.file-checkbox:checked');
+        const keys = Array.from(checkedBoxes).map(cb => cb.value);
+        if (keys.length === 0) return;
+
+        if (confirm(`Are you sure you want to permanently delete ${keys.length} files?`)) {
+            // Uncheck everything and hide the bar immediately for a snappy UI
+            checkedBoxes.forEach(cb => cb.checked = false);
+            handleSelectionChange();
+
+            await fetch(`${BASE_PATH}bulk?keys=${keys.join(',')}`, { method: 'DELETE' });
+            loadFiles(); // Refresh the grid!
+        }
+    }
+
+    // 🎯 SURGICAL REPLACE: Cleaned up Media Controller
+    let vjsPlayer = null;
+    let imgViewer = null;
+
+    function openMedia(key, fileName) {
+        const ext = fileName.split('.').pop().toLowerCase();
+        const url = BASE_PATH + 'view/' + key;
+        const container = document.getElementById('mediaContainer');
+
+        document.getElementById('mediaTitle').innerText = fileName;
+        container.innerHTML = ''; // Clear previous media
+        document.getElementById('mediaModal').classList.add('active');
+
+        if (['mp4', 'webm', 'ogg', 'mov'].includes(ext)) {
+            // 🍿 Init Video.js
+            container.innerHTML = `
+                <video id="vjs-video" class="video-js vjs-default-skin vjs-big-play-centered" controls preload="auto" style="width: 100%; height: 100%;">
+                    <source src="${url}" type="video/${ext === 'mov' ? 'mp4' : ext}">
+                </video>`;
+            vjsPlayer = videojs('vjs-video');
+            vjsPlayer.play();
+
+        } else if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(ext)) {
+            // 🖼️ Init Viewer.js
+            container.innerHTML = `<img id="viewer-img" src="${url}" style="display: none;">`;
+            imgViewer = new Viewer(document.getElementById('viewer-img'), {
+                inline: true,
+                button: false,
+                navbar: false,
+                title: false,
+                toolbar: { zoomIn: 1, zoomOut: 1, oneToOne: 1, reset: 1, rotateLeft: 1, rotateRight: 1 }
+            });
+        } else if (['mp3', 'wav', 'flac', 'aac', 'm4a'].includes(ext)) {
+            // 🎵 Init Audio Player
+            container.innerHTML = `
+                <div style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: #1e293b; flex-direction: column; gap: 30px;">
+                    <i class="fas fa-music" style="font-size: 6rem; color: var(--primary); text-shadow: 0 4px 12px rgba(0,0,0,0.3);"></i>
+                    <audio controls autoplay style="width: 70%; outline: none;">
+                        <source src="${url}" type="audio/${ext === 'mp3' ? 'mpeg' : ext}">
+                        Your browser does not support the audio element.
+                    </audio>
+                </div>`;
+
+        } else if (['gltf', 'glb'].includes(ext)) {
+            // 🧊 Init 3D Model Viewer
+            container.innerHTML = `
+                <model-viewer src="${url}" auto-rotate camera-controls shadow-intensity="1" style="width: 100%; height: 100%; background-color: #e2e8f0;"></model-viewer>`;
+        } // 🎯 SURGICAL REPLACE: Bulletproof PDF rendering
+         else if (ext === 'pdf') {
+            container.innerHTML = `
+                <div id="pdfViewer" style="width: 100%; height: 100%; overflow-y: auto; background: #525659; display: flex; flex-direction: column; align-items: center; padding: 20px 0;">
+                    <div id="pdfLoading" style="color: white; margin-top: 50px;"><i class="fas fa-spinner fa-spin fa-2x"></i><br><br>Loading PDF securely...</div>
+                </div>`;
+
+            // 1. Fetch the raw data first to avoid network "pending" deadlocks
+            fetch(url).then(res => res.arrayBuffer()).then(data => {
+                // 2. Pass the raw bytes directly to PDF.js
+                const loadingTask = pdfjsLib.getDocument({data: data});
+                loadingTask.promise.then(function(pdf) {
+                    const viewer = document.getElementById('pdfViewer');
+                    document.getElementById('pdfLoading').style.display = 'none';
+
+                    const pagesToRender = Math.min(pdf.numPages, 30);
+                    for (let pageNum = 1; pageNum <= pagesToRender; pageNum++) {
+                        pdf.getPage(pageNum).then(function(page) {
+                            const viewport = page.getViewport({scale: 1.5});
+                            const canvas = document.createElement('canvas');
+                            canvas.style.marginBottom = "20px";
+                            canvas.style.boxShadow = "0 4px 12px rgba(0,0,0,0.5)";
+                            canvas.style.maxWidth = "95%";
+                            canvas.style.height = "auto";
+
+                            const context = canvas.getContext('2d');
+                            canvas.height = viewport.height;
+                            canvas.width = viewport.width;
+                            viewer.appendChild(canvas);
+
+                            page.render({ canvasContext: context, viewport: viewport });
+                        });
+                    }
+                }).catch(err => {
+                    container.innerHTML = `<div style="color:white; padding: 20px;">Error rendering PDF. <a href="${BASE_PATH}f/${key}" style="color:var(--primary);">Click to download safely</a></div>`;
+                });
+            });
+        }
+    }
+
+    function closeMediaModal(e, force = false) {
+        // Only close if clicking the 'X' button or the dark background (not the player itself)
+        if (force || (e && e.target.classList.contains('modal-overlay'))) {
+            document.getElementById('mediaModal').classList.remove('active');
+
+            // 🛑 Safely destroy players to free up RAM and stop audio
+            if (vjsPlayer) {
+                vjsPlayer.pause();
+                vjsPlayer.src(''); // Wipes the source
+                vjsPlayer.load();  // Forces the browser to abort the pending 206 chunk downloads
+                vjsPlayer.dispose(); // Destroys the UI
+                vjsPlayer = null;
+            }
+            if (imgViewer) {
+                imgViewer.destroy();
+                imgViewer = null;
+            }
+            document.getElementById('mediaContainer').innerHTML = '';
+        }
+    }
+
+    // Initialization
     loadFiles();
 </script>
 </body>
@@ -486,13 +887,23 @@
 <!--            background: var(&#45;&#45;surface); border-radius: 16px; padding: 16px;-->
 <!--            box-shadow: 0 2px 4px rgba(0,0,0,0.05);-->
 <!--            display: flex; flex-direction: column; align-items: center; text-align: center;-->
+<!--            transition: transform 0.2s ease, box-shadow 0.2s ease;-->
 <!--        }-->
+<!--        .card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.08); }-->
+
+<!--        /* 🎯 New styles to make the file clickable */-->
+<!--        .file-link {-->
+<!--            text-decoration: none; color: inherit; width: 100%;-->
+<!--            display: flex; flex-direction: column; align-items: center; cursor: pointer;-->
+<!--        }-->
+<!--        .file-link:hover .file-name { color: var(&#45;&#45;primary); }-->
+
 <!--        .file-icon { font-size: 2.8rem; color: var(&#45;&#45;primary); margin: 12px 0 16px 0; }-->
-<!--        .file-name { font-size: 0.95rem; font-weight: 600; width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 4px; }-->
+<!--        .file-name { font-size: 0.95rem; font-weight: 600; width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 4px; transition: color 0.2s; }-->
 <!--        .file-meta { font-size: 0.75rem; color: var(&#45;&#45;text-light); margin-bottom: 16px; }-->
 
 <!--        .actions { display: flex; gap: 6px; width: 100%; justify-content: space-evenly; border-top: 1px solid #f1f5f9; padding-top: 12px; }-->
-<!--        .btn-icon { background: transparent; color: var(&#45;&#45;text-light); border: none; width: 36px; height: 36px; border-radius:10px; cursor: pointer; font-size: 1.1rem; display:flex; align-items:center; justify-content:center;}-->
+<!--        .btn-icon { background: transparent; color: var(&#45;&#45;text-light); border: none; width: 36px; height: 36px; border-radius:10px; cursor: pointer; font-size: 1.1rem; display:flex; align-items:center; justify-content:center; transition: all 0.2s;}-->
 <!--        .btn-icon:hover { background: #f1f5f9; color: var(&#45;&#45;primary); }-->
 <!--        .btn-icon.delete:hover { background: #fef2f2; color: var(&#45;&#45;danger); }-->
 
@@ -618,7 +1029,7 @@
 <!--    /* ICONS & HELPERS */-->
 <!--    const getIcon = (f) => {-->
 <!--        const ext = f.split('.').pop().toLowerCase();-->
-<!--        const map = {'pdf':'fa-file-pdf','jpg':'fa-file-image','png':'fa-file-image','mp4':'fa-file-video','zip':'fa-file-archive'};-->
+<!--        const map = {'pdf':'fa-file-pdf','jpg':'fa-file-image','jpeg':'fa-file-image','png':'fa-file-image','gif':'fa-file-image','mp4':'fa-file-video','zip':'fa-file-archive','txt':'fa-file-alt'};-->
 <!--        return map[ext] || 'fa-file';-->
 <!--    };-->
 
@@ -647,7 +1058,6 @@
 <!--        const header = "Basic " + creds;-->
 
 <!--        try {-->
-<!--            // Updated to use BASE_PATH-->
 <!--            const res = await fetch(BASE_PATH + 'admin/health', { headers: { 'Authorization': header } });-->
 <!--            if (res.ok) {-->
 <!--                adminAuthHeader = header;-->
@@ -673,7 +1083,6 @@
 
 <!--    async function fetchAndShowStats() {-->
 <!--        try {-->
-<!--            // Updated to use BASE_PATH-->
 <!--            const res = await fetch(BASE_PATH + 'admin/health', { headers: { 'Authorization': adminAuthHeader } });-->
 <!--            if(res.ok) updateDashUI(await res.json());-->
 <!--            else if(res.status === 401) {-->
@@ -712,7 +1121,6 @@
 <!--        grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:40px;color:#888"><i class="fas fa-spinner fa-spin fa-2x"></i></div>';-->
 
 <!--        try {-->
-<!--            // Updated to use BASE_PATH-->
 <!--            const res = await fetch(BASE_PATH + "files");-->
 <!--            const files = await res.json();-->
 <!--            grid.innerHTML = '';-->
@@ -720,19 +1128,23 @@
 <!--            if(!files.length) { grid.innerHTML='<div style="grid-column:1/-1;text-align:center;padding:40px;color:#ccc"><i class="fas fa-folder-open fa-3x"></i><p>No files</p></div>'; return; }-->
 
 <!--            files.forEach(f => {-->
-<!--                // Constructed URL including BASE_PATH-->
-<!--                const url = `${window.location.protocol}//${window.location.host}${BASE_PATH}f/${f.fileKey}`;-->
+<!--                // 🎯 The two distinct URLs for Viewing vs. Downloading-->
+<!--                const downloadUrl = `${window.location.protocol}//${window.location.host}${BASE_PATH}f/${f.fileKey}`;-->
+<!--                const viewUrl = `${window.location.protocol}//${window.location.host}${BASE_PATH}view/${f.fileKey}`;-->
+
 <!--                const card = document.createElement('div');-->
 <!--                card.className = 'card';-->
 <!--                card.innerHTML = `-->
-<!--                    <i class="fas ${getIcon(f.originalFileName)} file-icon"></i>-->
-<!--                    <div class="file-name">${f.originalFileName}</div>-->
+<!--                    <a href="${viewUrl}" target="_blank" class="file-link" title="Click to view">-->
+<!--                        <i class="fas ${getIcon(f.originalFileName)} file-icon"></i>-->
+<!--                        <div class="file-name">${f.originalFileName}</div>-->
+<!--                    </a>-->
 <!--                    <div class="file-meta">${formatSize(f.size)}</div>-->
 <!--                    <div class="actions">-->
-<!--                        <button class="btn-icon" onclick="window.location.href='${url}'"><i class="fas fa-cloud-download-alt"></i></button>-->
-<!--                        <button class="btn-icon" onclick="shareLink('${url}')"><i class="fas fa-link"></i></button>-->
-<!--                        <button class="btn-icon" onclick="showQR('${url}', 'Scan to Download')" title="QR"><i class="fas fa-qrcode"></i></button>-->
-<!--                        <button class="btn-icon delete" onclick="removeFile('${f.fileKey}')"><i class="fas fa-trash"></i></button>-->
+<!--                        <button class="btn-icon" onclick="window.location.href='${downloadUrl}'" title="Force Download"><i class="fas fa-cloud-download-alt"></i></button>-->
+<!--                        <button class="btn-icon" onclick="shareLink('${viewUrl}')" title="Copy View Link"><i class="fas fa-link"></i></button>-->
+<!--                        <button class="btn-icon" onclick="showQR('${viewUrl}', 'Scan to View')" title="Show QR Code"><i class="fas fa-qrcode"></i></button>-->
+<!--                        <button class="btn-icon delete" onclick="removeFile('${f.fileKey}')" title="Delete File"><i class="fas fa-trash"></i></button>-->
 <!--                    </div>`;-->
 <!--                grid.appendChild(card);-->
 <!--            });-->
@@ -747,7 +1159,6 @@
 <!--        const fd = new FormData();-->
 <!--        fd.append("file", file);-->
 
-<!--        // Updated to use BASE_PATH-->
 <!--        xhr.open("POST", BASE_PATH + "upload", true);-->
 
 <!--        document.getElementById('progressModal').classList.add('active');-->
@@ -765,7 +1176,49 @@
 <!--    }-->
 
 <!--    function shareLink(url) {-->
-<!--        navigator.clipboard.writeText(url).then(() => showToast("Copied!"));-->
+<!--        // 1. Try the modern, secure clipboard API first-->
+<!--        if (navigator.clipboard && window.isSecureContext) {-->
+<!--            navigator.clipboard.writeText(url)-->
+<!--                .then(() => showToast("Copied!"))-->
+<!--                .catch(err => {-->
+<!--                    console.warn("Modern copy failed, trying fallback...", err);-->
+<!--                    fallbackCopy(url);-->
+<!--                });-->
+<!--        } else {-->
+<!--            // 2. If on HTTP (like a local network IP), use the fallback-->
+<!--            fallbackCopy(url);-->
+<!--        }-->
+<!--    }-->
+
+<!--    // 🎯 THE FIX: The classic hidden-textarea trick that works on HTTP-->
+<!--    function fallbackCopy(text) {-->
+<!--        const textArea = document.createElement("textarea");-->
+<!--        textArea.value = text;-->
+
+<!--        // Prevent screen scrolling on mobile-->
+<!--        textArea.style.top = "0";-->
+<!--        textArea.style.left = "0";-->
+<!--        textArea.style.position = "fixed";-->
+<!--        textArea.style.opacity = "0";-->
+
+<!--        document.body.appendChild(textArea);-->
+<!--        textArea.focus();-->
+<!--        textArea.select();-->
+<!--        textArea.setSelectionRange(0, 99999);-->
+
+<!--        try {-->
+<!--            const successful = document.execCommand('copy');-->
+<!--            if (successful) {-->
+<!--                showToast("Copied!");-->
+<!--            } else {-->
+<!--                showToast("Copy failed");-->
+<!--            }-->
+<!--        } catch (err) {-->
+<!--            console.error("Fallback copy failed", err);-->
+<!--            showToast("Copy failed");-->
+<!--        }-->
+
+<!--        document.body.removeChild(textArea);-->
 <!--    }-->
 
 <!--    function showQR(url, title) {-->
@@ -780,7 +1233,6 @@
 
 <!--    async function removeFile(key) {-->
 <!--        if(confirm("Delete?")) {-->
-<!--            // Updated to use BASE_PATH-->
 <!--            await fetch(`${BASE_PATH}files/${key}`, {method:'DELETE'});-->
 <!--            loadFiles();-->
 <!--        }-->

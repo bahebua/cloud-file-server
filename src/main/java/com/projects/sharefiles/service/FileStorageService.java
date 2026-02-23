@@ -6,7 +6,12 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
+import javax.imageio.ImageIO;
+import java.awt.*;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -14,11 +19,11 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
+import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
 
 @Service
@@ -129,7 +134,7 @@ public class FileStorageService {
         }
     }
 
-    @Scheduled(fixedDelay = 60_000) // every 1 minute
+    @Scheduled(fixedDelay = 1800000) // every 1 minute
     public void cleanupExpiredFiles() {
 
         Instant now = Instant.now();
@@ -163,6 +168,71 @@ public class FileStorageService {
                 "fileCount", count,
                 "usedMB", size / 1024 / 1024
         );
+    }
+
+    public StreamingResponseBody createZipStream(List<String> keys) {
+        return out -> {
+            try (ZipOutputStream zos = new ZipOutputStream(out)) {
+                Set<String> existingNames = new HashSet<>();
+
+                for (String key : keys) {
+                    FileMeta meta = getMeta(key);
+                    File file = getFile(key);
+
+                    if (meta != null && file != null && file.exists()) {
+                        String fileName = meta.getOriginalFileName();
+
+                        // 🛡️ Safety Check: Prevent "Duplicate Entry" ZIP crashes
+                        int count = 1;
+                        String baseName = fileName;
+                        while (existingNames.contains(fileName)) {
+                            int dotIndex = baseName.lastIndexOf('.');
+                            if (dotIndex != -1) {
+                                fileName = baseName.substring(0, dotIndex) + " (" + count + ")" + baseName.substring(dotIndex);
+                            } else {
+                                fileName = baseName + " (" + count + ")";
+                            }
+                            count++;
+                        }
+                        existingNames.add(fileName);
+
+                        // Create entry and stream bytes
+                        ZipEntry zipEntry = new ZipEntry(fileName);
+                        zos.putNextEntry(zipEntry);
+                        Files.copy(file.toPath(), zos);
+                        zos.closeEntry();
+                    }
+                }
+            } catch (IOException e) {
+                System.err.println("Error generating ZIP: " + e.getMessage());
+            }
+        };
+    }
+
+    public byte[] generateThumbnail(String key) throws IOException {
+        File file = getFile(key);
+
+        if (file == null || !file.exists()) {
+            return null; // File not found
+        }
+
+        // 1. Read the massive original image
+        BufferedImage originalImage = ImageIO.read(file);
+        if (originalImage == null) {
+            return null; // Not an image format Java understands
+        }
+
+        // 2. Shrink it down to a 150x150 thumbnail
+        BufferedImage thumb = new BufferedImage(150, 150, BufferedImage.TYPE_INT_RGB);
+        Graphics2D g2d = thumb.createGraphics();
+        g2d.drawImage(originalImage, 0, 0, 150, 150, null);
+        g2d.dispose();
+
+        // 3. Convert back to a byte array
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        ImageIO.write(thumb, "jpg", baos);
+
+        return baos.toByteArray();
     }
 
 
