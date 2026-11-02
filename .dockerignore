@@ -1,0 +1,14 @@
+target/
+.git/
+.github/
+.idea/
+.vscode/
+*.iml
+*.log
+.DS_Store
+.gitignore
+mvnw
+mvnw.cmd
+README.md
+README.txt
+LICENSE
